@@ -1,19 +1,9 @@
 import chess
 import torch
 from typing import Optional
+from ai.encoding import encode_board
 from ai.model import ChessEvalNet
 from config import *
-
-def encode_board(board: chess.Board) -> torch.Tensor:
-    planes = torch.zeros((12, 8, 8), dtype=torch.float32)
-    piece_map = board.piece_map()
-    for square, piece in piece_map.items():
-        row = 7 - (square // 8)
-        col = square % 8
-        base = 0 if piece.color == chess.WHITE else 6
-        idx = base + (piece.piece_type - 1)
-        planes[idx, row, col] = 1.0
-    return planes
 
 
 class NeuralNetEngine:

@@ -5,7 +5,7 @@ PVP = 'pvp'
 PVE = 'pve'
 AI_VS_AI = 'ai_vs_ai'
 
-GAME_MODE = AI_VS_AI  # change to swap between modes
+GAME_MODE = PVE  # change to swap between modes
 HUMAN_COLOR = chess.WHITE  # color for human player in 'pve' mode
 AI_COLOR = HUMAN_COLOR ^ True  # color for human 2 or AI in 'pve' mode
 AI_SAVE_PGN = True     # save completed AI vs AI games to PGN when true
@@ -17,9 +17,9 @@ NEURAL_NETWORK = 'neural'
 STOCKFISH = 'stockfish'
 
 AI_WHITE_ENGINE = NEURAL_NETWORK
-AI_BLACK_ENGINE = DEFAULT_MIN_MAX
-AI_WHITE_DEPTH = 4
-AI_BLACK_DEPTH = 4
+AI_BLACK_ENGINE = NEURAL_NETWORK
+AI_WHITE_DEPTH = 3
+AI_BLACK_DEPTH = 3
 
 
 # Stockfish settings
@@ -52,6 +52,5 @@ GRAY = (220, 220, 220)
 
 # Paths
 PIECE_PATH = "assets/pieces/"
-AI_MODEL_PATH = 'saved_ai/best.pt'  # path to trained PyTorch model
+AI_MODEL_PATH = 'saved_ai/ai2lichess.pt'  # path to trained PyTorch model
 AI_PGN_PATH = "Logs/ai_games.pgn"  # appended file for AI game results
-BEST_AI_MODEL_PATH = 'saved_ai/best_ai.pt'  # path to best model based on eval score
