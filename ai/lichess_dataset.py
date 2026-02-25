@@ -1,7 +1,7 @@
 import csv
 import io
 import re
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import chess
 import chess.pgn
@@ -28,13 +28,13 @@ def extract_eval(comment: str) -> Optional[float]:
 def parse_movetext(movetext: str) -> List[Tuple[torch.Tensor, float]]:
     if not movetext:
         return []
-    
-    pgn_text = f"[Event \"?\"]\n\n{movetext}\n"
+
+    pgn_text = f'[Event "?"]\n\n{movetext}\n'
     try:
         game = chess.pgn.read_game(io.StringIO(pgn_text))
-    except:
+    except Exception:
         return []
-    
+
     if not game:
         return []
 
@@ -49,13 +49,21 @@ def parse_movetext(movetext: str) -> List[Tuple[torch.Tensor, float]]:
 
 
 class LichessCsvDataset(IterableDataset):
-    def __init__(self):
+    def __init__(self, split: str = None):
         super().__init__()
         self.path = DATASET_PATH
         self.max_rows = MAX_ROWS
-        self.min_elo = MIN_ELO
+        self.split = split
+        self.train_cutoff = int(MAX_ROWS * (1.0 - VAL_SPLIT / 100.0))
 
-    def __iter__(self) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
+    def _in_split(self, global_index: int) -> bool:
+        if self.split is None:
+            return True
+        if self.split == "train":
+            return global_index < self.train_cutoff
+        return global_index >= self.train_cutoff
+
+    def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info is not None else 0
         num_workers = worker_info.num_workers if worker_info is not None else 1
@@ -65,24 +73,13 @@ class LichessCsvDataset(IterableDataset):
             if not reader.fieldnames or "AN" not in reader.fieldnames:
                 raise ValueError("CSV missing required 'AN' column")
 
-            global_seen = 0
-            for row in reader:
+            for global_seen, row in enumerate(reader):
                 if self.max_rows and global_seen >= self.max_rows:
                     break
-
-                if global_seen % num_workers != worker_id:
-                    global_seen += 1
+                if not self._in_split(global_seen):
                     continue
-                
-                if self.min_elo:
-                    try:
-                        if int(row.get("WhiteElo", 0)) < self.min_elo or int(row.get("BlackElo", 0)) < self.min_elo:
-                            global_seen += 1
-                            continue
-                    except ValueError:
-                        global_seen += 1
-                        continue
-                
-                global_seen += 1
+                if global_seen % num_workers != worker_id:
+                    continue
+
                 for features, eval_cp in parse_movetext(row.get("AN", "")):
                     yield features, torch.tensor(eval_cp, dtype=torch.float32)

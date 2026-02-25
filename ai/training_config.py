@@ -1,14 +1,13 @@
-import torch
-
 # Dataset
 FEN = "fen"
 LICHESS = "lichess"
 DATASET_TYPE = FEN
-DATASET_PATH = "data/lichess_db_eval.csv"
-MAX_ROWS = 10_000_000
 
-# Lichess dataset options
-MIN_ELO = None 
+FEN_PATH = "path-to-FEN.csv"
+LICHESS_PATH = "path-to-lichess.csv"
+DATASET_PATH = FEN_PATH if DATASET_TYPE == FEN else LICHESS_PATH
+
+MAX_ROWS = 10_000_000 # 200_000 for lichess, 10_000_000 for FEN
 
 # FEN dataset options
 FEN_INCLUDE_MATES = False
@@ -21,9 +20,11 @@ BATCH_SIZE = 256
 EPOCHS = 100
 LR = 3e-4
 WEIGHT_DECAY = 1e-4
-NUM_WORKERS = 16
+NUM_WORKERS = 14
+SEED = 42
+VAL_SPLIT = 20
 
 
-# Device & save
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Save
 SAVE_PATH = f"saved_ai/best_ai_{DATASET_TYPE}.pt"
+RESUME_PATH = "checkpoints\\fen_epoch2.pt"
