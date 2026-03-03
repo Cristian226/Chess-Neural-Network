@@ -51,10 +51,8 @@ def parse_movetext(movetext: str) -> List[Tuple[torch.Tensor, float]]:
 class LichessCsvDataset(IterableDataset):
     def __init__(self, split: str = None):
         super().__init__()
-        self.path = DATASET_PATH
-        self.max_rows = MAX_ROWS
         self.split = split
-        self.train_cutoff = int(MAX_ROWS * (1.0 - VAL_SPLIT / 100.0))
+        self.train_cutoff = int(MAX_ROWS_LICHESS * (1.0 - VAL_SPLIT / 100.0))
 
     def _in_split(self, global_index: int) -> bool:
         if self.split is None:
@@ -68,13 +66,13 @@ class LichessCsvDataset(IterableDataset):
         worker_id = worker_info.id if worker_info is not None else 0
         num_workers = worker_info.num_workers if worker_info is not None else 1
 
-        with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+        with open(LICHESS_PATH, "r", encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
             if not reader.fieldnames or "AN" not in reader.fieldnames:
                 raise ValueError("CSV missing required 'AN' column")
 
             for global_seen, row in enumerate(reader):
-                if self.max_rows and global_seen >= self.max_rows:
+                if MAX_ROWS_LICHESS and global_seen >= MAX_ROWS_LICHESS:
                     break
                 if not self._in_split(global_seen):
                     continue

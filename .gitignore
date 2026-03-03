@@ -4,6 +4,7 @@ __pycache__/
 Logs/
 checkpoints/
 saved_ai/
+training_data/
 
 .venv/
 venv/
