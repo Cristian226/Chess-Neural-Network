@@ -9,7 +9,7 @@ from ai.encoding import encode_board
 from ai.training_config import *
 
 
-def parse_eval(eval_str: str) -> Optional[float]:
+def parse_eval(eval_str: str, board: chess.Board) -> Optional[float]:
     eval_str = eval_str.strip()
     if not eval_str:
         return None
@@ -24,7 +24,10 @@ def parse_eval(eval_str: str) -> Optional[float]:
         return FEN_MATE_VALUE_CP if mate_in > 0 else -FEN_MATE_VALUE_CP
 
     try:
-        return float(eval_str)
+        eval_cp = float(eval_str)
+        if board.turn == chess.BLACK:
+            eval_cp = -eval_cp
+        return eval_cp
     except ValueError:
         return None
 
@@ -70,7 +73,7 @@ class FenDataset(IterableDataset):
                 except ValueError:
                     continue
 
-                eval_cp = parse_eval(eval_str)
+                eval_cp = parse_eval(eval_str, board)
                 if eval_cp is None:
                     continue
                 if FEN_MAX_VALUE_EVAL is not None and abs(eval_cp) > FEN_MAX_VALUE_EVAL:

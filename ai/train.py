@@ -36,18 +36,21 @@ def unscale(t: torch.Tensor):
     return t * CLIP_CP
 
 
-def save_checkpoint(path, model, optimizer, epoch, best_loss):
+def save_checkpoint(path, model, optimizer, scheduler, epoch, best_loss):
     torch.save({
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
         "epoch": epoch,
         "best_loss": best_loss,
     }, path)
 
-def load_checkpoint(path, model, optimizer):
+def load_checkpoint(path, model, optimizer, scheduler):
     checkpoint = torch.load(path, map_location="cpu")
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
+    if "scheduler" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler"])
     model.to(DEVICE)
 
     for state in optimizer.state.values():
@@ -78,14 +81,13 @@ def run_epoch(model, loader, optimizer=None, scaler=None) -> Tuple[float, float]
         targets = targets.to(DEVICE, non_blocking=True).unsqueeze(1)
 
         scaled_targets = scale_targets(targets)
-        with torch.autocast(device_type="cuda", enabled=True):
+        with torch.autocast("cuda"):
             preds = model(features)
             loss = F.smooth_l1_loss(preds, scaled_targets)
 
         if training:
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
 
@@ -113,6 +115,7 @@ if __name__ == "__main__":
 
     model = ChessEvalNet().to(DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=LR_MIN)
     scaler = torch.amp.GradScaler("cuda", enabled=True)
     best_val_loss = float("inf")
     start_epoch = 1
@@ -120,7 +123,7 @@ if __name__ == "__main__":
     os.makedirs("checkpoints", exist_ok=True)
 
     if RESUME_PATH and os.path.exists(RESUME_PATH):
-        start_epoch, best_val_loss = load_checkpoint(RESUME_PATH, model, optimizer)
+        start_epoch, best_val_loss = load_checkpoint(RESUME_PATH, model, optimizer, scheduler)
     elif RESUME_PATH:
         print("Checkpoint not found:", RESUME_PATH)
 
@@ -132,14 +135,17 @@ if __name__ == "__main__":
         train_loss, train_mae = run_epoch(model, train_loader, optimizer, scaler)
         val_loss, val_mae = run_epoch(model, val_loader)
 
-        print(f"Epoch {epoch}")
-        print(f"Train loss={train_loss:.6f} mae={train_mae:.1f}cp")
-        print(f"Val loss={val_loss:.6f} mae={val_mae:.1f}cp")
+        scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
 
-        save_checkpoint(f"checkpoints/{DATASET_TYPE}_epoch{epoch}.pt", model, optimizer, epoch, best_val_loss)
+        print(f"Epoch {epoch}                 lr ={current_lr:.2e}")
+        print(f"Train loss={train_loss:.6f}   mae={train_mae:.1f}cp")
+        print(f"Val   loss={val_loss:.6f}   mae={val_mae:.1f}cp   ")
+
+        save_checkpoint(f"checkpoints/{DATASET_TYPE}_epoch{epoch}.pt", model, optimizer, scheduler, epoch, best_val_loss)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            save_checkpoint(SAVE_PATH, model, optimizer, epoch, best_val_loss)
+            save_checkpoint(SAVE_PATH, model, optimizer, scheduler, epoch, best_val_loss)
 
         print(f"Epoch time: {(time.time() - t0)/60:.2f} min")

@@ -14,14 +14,17 @@ from ai.training_config import *
 EVAL_RE = re.compile(r"\[%eval\s+([+-]?[\d.]+)\]")
 
 
-def extract_eval(comment: str) -> Optional[float]:
+def extract_eval(comment: str, board: chess.Board) -> Optional[float]:
     if not comment:
         return None
     match = EVAL_RE.search(comment)
     if not match:
         return None
     try:
-        return float(match.group(1)) * 100.0
+        eval_cp = float(match.group(1)) * 100.0
+        if board.turn == chess.BLACK:
+            eval_cp = -eval_cp
+        return eval_cp
     except ValueError:
         return None
 
@@ -42,7 +45,7 @@ def parse_movetext(movetext: str) -> List[Tuple[torch.Tensor, float]]:
     samples = []
     for node in game.mainline():
         board.push(node.move)
-        eval_cp = extract_eval(node.comment)
+        eval_cp = extract_eval(node.comment, board)
         if eval_cp is not None:
             samples.append((encode_board(board.copy()), eval_cp))
     return samples

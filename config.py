@@ -24,8 +24,8 @@ AI_BLACK_DEPTH = 3
 
 # Stockfish settings
 STOCKFISH_PATH = None  # path to stockfish executable (None = use PATH)
-STOCKFISH_TIME_LIMIT = 0.1  # time limit per move in seconds
-STOCKFISH_DEPTH = 20
+STOCKFISH_TIME_LIMIT = 1  # time limit per move in seconds
+STOCKFISH_ELO = 1400   # min 1320, max 3190
 
 AI_MOVE_DELAY_MS = 100  # delay between AI moves (milliseconds) for smoother play
 
@@ -52,5 +52,5 @@ GRAY = (220, 220, 220)
 
 # Paths
 PIECE_PATH = "assets/pieces/"
-AI_MODEL_PATH = 'saved_ai/ai2lichess.pt'  # path to trained PyTorch model
+AI_MODEL_PATH = "saved_ai/ai4lichess.pt"  # path to trained PyTorch model
 AI_PGN_PATH = "Logs/ai_games.pgn"  # appended file for AI game results
