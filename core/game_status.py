@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Optional
-
 import chess
 
 from config import *
@@ -14,68 +13,70 @@ class EvalDisplay:
     error: Optional[str]
 
 @dataclass
-class EvalSummary:
-    stockfish: EvalDisplay
-    neural: EvalDisplay
-
-@dataclass
-class PlayerSummary:
-    white: str
-    black: str
-
-@dataclass
-class AIStatus:
-    label: str
-    thinking: bool
-    thinking_time_ms: int
-    last_move_time_ms: Optional[int]
-
-@dataclass
 class GameStatus:
     mode_label: str
     turn_label: str
     state_label: str
-    players: PlayerSummary
-    ai: AIStatus
+
+    white_player: str
+    black_player: str
+
+    ai_label: str
+    ai_thinking: bool
+
     move_rows: list[tuple[str, str, str]]
+
     result_text: Optional[str]
-    evals: EvalSummary
 
+    stockfish_eval: EvalDisplay
+    neural_eval: EvalDisplay
 
-def _eval_fill(centipawns: Optional[int]) -> float:
-    if centipawns is None:
-        return 0.5
-    return 0.5 + max(-1200, min(1200, centipawns)) / 2400
-
-def _eval_label(centipawns: Optional[int]) -> str:
-    if centipawns is None:
-        return "--"
-    if abs(centipawns) >= 99999:
-        return "+M" if centipawns > 0 else "-M"
-    return f"{centipawns / 100.0:+.1f}"
 
 def _eval_display(tracker) -> EvalDisplay:
-    return EvalDisplay(
-        label=_eval_label(tracker.cp),
-        fill=_eval_fill(tracker.cp),
-        pending=tracker.pending,
-        error=tracker.error,
-    )
+    cp = tracker.cp
+    if cp is None:
+        label = "--"
+        fill = 0.5
+    else:
+        fill = 0.5 + max(-1200, min(1200, cp)) / 2400
+        if abs(cp) >= 99999:
+            label = "+M" if cp > 0 else "-M"
+        else:
+            label = f"{cp / 100:+.1f}"
 
-def _player_label(game, color: bool) -> str:
+    return EvalDisplay(label=label, fill=fill, pending=tracker.pending, error=tracker.error)
+
+def _player_label(game, color):
     if game.mode == PVP or (game.mode == PVE and color == game.human_color):
         return "Human"
-    engine_name = AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE
-    if engine_name == STOCKFISH_AI:
-        return f"{engine_name.upper()} ({STOCKFISH_ELO} Elo)"
-    return f"{engine_name.upper()} (d={AI_MINMAX_DEPTH})"
+    engine = AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE
+    if engine == STOCKFISH_AI:
+        return f"{engine.upper()} ({STOCKFISH_ELO} Elo)"
+    return f"{engine.upper()} (d={AI_MINMAX_DEPTH})"
 
-def _result_text(game) -> Optional[str]:
-    if not game.board.is_game_over():
+def _state_label(game):
+    board = game.board
+    if board.is_checkmate():
+        return "Checkmate"
+    if board.is_stalemate():
+        return "Stalemate"
+    if board.is_insufficient_material():
+        return "Draw"
+    if board.is_check():
+        return "Check"
+    if game.is_ai_turn():
+        return "AI to move"
+    if game.mode == PVE:
+        return "Your turn"
+    return ""
+
+def _result_text(game):
+    board = game.board
+    if not board.is_game_over():
         return None
-    outcome = game.board.outcome()
+    outcome = board.outcome()
     if outcome is None:
-        return game.board.result()
+        return board.result()
     if outcome.winner is chess.WHITE:
         prefix = "White wins"
     elif outcome.winner is chess.BLACK:
@@ -84,56 +85,44 @@ def _result_text(game) -> Optional[str]:
         prefix = "Draw"
     return f"{prefix} by {outcome.termination.name.replace('_', ' ').title()}"
 
-def _move_rows(game) -> list[tuple[str, str, str]]:
+def _move_rows(game):
+    rows = []
     history = game.move_history
-    return [
-        (f"{i // 2 + 1}.", history[i], history[i + 1] if i + 1 < len(history) else "")
-        for i in range(0, len(history), 2)
-    ]
+    for i in range(0, len(history), 2):
+        white = history[i]
+        black = history[i + 1] if i + 1 < len(history) else ""
+        rows.append((f"{i//2+1}.", white, black))
+    return rows
 
-def _ai_status(game) -> AIStatus:
-    thinking = game.ai_worker.busy and game.is_ai_turn()
-    think_time_ms = game.ai_worker.current_think_time_ms()
+def _ai_status(game):
+    worker = game.ai_worker
+    thinking = worker.busy and game.is_ai_turn()
+
     if thinking:
-        label = f"AI thinking: {think_time_ms / 1000:.2f}s"
-    elif game.ai_worker.busy:
+        t = worker.current_think_time_ms() / 1000
+        label = f"AI thinking: {t:.2f}s"
+    elif worker.busy:
         label = "Finishing previous search"
     elif game.last_ai_time_ms is not None:
-        label = f"Last AI move: {game.last_ai_time_ms / 1000:.2f}s"
+        t = game.last_ai_time_ms / 1000
+        label = f"Last AI move: {t:.2f}s"
     else:
         label = "Idle"
-    return AIStatus(label, thinking, think_time_ms, game.last_ai_time_ms)
-
-def _state_label(game) -> str:
-    if game.board.is_checkmate():
-        return "Checkmate"
-    if game.board.is_stalemate():
-        return "Stalemate"
-    if game.board.is_insufficient_material():
-        return "Drawn endgame"
-    if game.board.is_check():
-        return "Check"
-    if game.is_ai_turn():
-        return "AI to move"
-    if game.mode == PVE:
-        return "Your turn"
-    return "Waiting for move"
+    return label, thinking
 
 
 def build_game_status(game) -> GameStatus:
+    ai_label, ai_thinking = _ai_status(game)
     return GameStatus(
         mode_label=game.mode.upper(),
         turn_label="White to move" if game.board.turn else "Black to move",
         state_label=_state_label(game),
-        players=PlayerSummary(
-            white=_player_label(game, chess.WHITE),
-            black=_player_label(game, chess.BLACK),
-        ),
-        ai=_ai_status(game),
+        white_player=_player_label(game, chess.WHITE),
+        black_player=_player_label(game, chess.BLACK),
+        ai_label=ai_label,
+        ai_thinking=ai_thinking,
         move_rows=_move_rows(game),
         result_text=_result_text(game),
-        evals=EvalSummary(
-            stockfish=_eval_display(game.sf_eval),
-            neural=_eval_display(game.nn_eval),
-        ),
+        stockfish_eval=_eval_display(game.sf_eval),
+        neural_eval=_eval_display(game.nn_eval),
     )
