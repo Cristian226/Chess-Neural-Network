@@ -35,11 +35,11 @@ SQUARE_SIZE = BOARD_SIZE // 8
 STOCKFISH_PATH = None               # None = use system PATH
 STOCKFISH_TIME_LIMIT = 1            # seconds per move
 STOCKFISH_ELO = 1800                # 1320 – 3190
-STOCKFISH_EVAL_TIME_LIMIT = 0.35
+STOCKFISH_EVAL_TIME_LIMIT = 0.5
 STOCKFISH_EVAL_ELO = None           # None = full strength
 
 
 # Paths
 PIECE_ASSET_PATH = "assets/pieces/"
-AI_MODEL_PATH = "saved_ai/ai4lichess.pt"
+AI_MODEL_PATH = 'ai\\lichessAI.pt'
 AI_PGN_PATH = "logs/ai_games.pgn"

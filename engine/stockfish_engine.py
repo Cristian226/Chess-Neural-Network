@@ -9,10 +9,16 @@ class StockfishEngine:
         self._closed = False
         self.elo = elo
         self.time_limit = time_limit
+        self.available = False
+        self.unavailable_reason: Optional[str] = None
         try:
             self.start_engine()
         except FileNotFoundError:
-            raise RuntimeError("Stockfish not found. Add the path to STOCKFISH_PATH in config.py or add it in your system PATH.")
+            self.available = False
+            self.unavailable_reason = "Stockfish not found"
+        except Exception as exc:
+            self.available = False
+            self.unavailable_reason = f"Stockfish failed to start: {exc}"
 
     def start_engine(self):
         self.engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH or "stockfish")
@@ -20,15 +26,23 @@ class StockfishEngine:
             self.engine.configure({"UCI_LimitStrength": False})
         else:
             self.engine.configure({"UCI_LimitStrength": True, "UCI_Elo": self.elo})
+        self.available = True
+        self.unavailable_reason = None
 
     def get_best_move(self, board: chess.Board) -> Optional[chess.Move]:
         if board.is_game_over():
             return None
+
+        if not self.available or self.engine is None:
+            raise RuntimeError(self.unavailable_reason or "Stockfish evaluation unavailable")
         
         result = self.engine.play(board, chess.engine.Limit(time= self.time_limit))
         return result.move
 
     def evaluate_position(self, board: chess.Board) -> int:
+        if not self.available or self.engine is None:
+            raise RuntimeError(self.unavailable_reason or "Stockfish evaluation unavailable")
+
         if board.is_checkmate():
             return -99999 if board.turn == chess.WHITE else 99999
         if board.is_stalemate() or board.is_insufficient_material():
@@ -55,7 +69,14 @@ class StockfishEngine:
             self.engine.quit()
         except chess.engine.EngineTerminatedError:
             pass
-        self.start_engine()
+        try:
+            self.start_engine()
+        except FileNotFoundError:
+            self.available = False
+            self.unavailable_reason = "Stockfish not found"
+        except Exception as exc:
+            self.available = False
+            self.unavailable_reason = f"Stockfish failed to start: {exc}"
     
     def __del__(self):
         try:

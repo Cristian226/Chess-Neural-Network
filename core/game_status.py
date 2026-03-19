@@ -60,7 +60,7 @@ def _state_label(game):
         return "Checkmate"
     if board.is_stalemate():
         return "Stalemate"
-    if board.is_insufficient_material():
+    if board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
         return "Draw"
     if board.is_check():
         return "Check"
@@ -98,7 +98,9 @@ def _ai_status(game):
     worker = game.ai_worker
     thinking = worker.busy and game.is_ai_turn()
 
-    if thinking:
+    if bool(worker.error):
+        label = f"Eval unavailable, AI moves randomly"
+    elif thinking:
         t = worker.current_think_time_ms() / 1000
         label = f"AI thinking: {t:.2f}s"
     elif worker.busy:

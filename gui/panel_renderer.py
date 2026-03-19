@@ -127,7 +127,7 @@ class PanelRenderer:
             pygame.draw.rect(screen, TEXT_COLOR, (bar.x, bar.y, fill, bar.height), border_radius=4)
 
         if eval_data.error:
-            err = self.font_small.render("eval unavailable", True, CHECK_ALERT_COLOR)
+            err = self.font_small.render(eval_data.error, True, CHECK_ALERT_COLOR)
             screen.blit(err, (rect.right - err.get_width() - CARD_PADDING, rect.y + 8))
 
     def _draw_moves_card(self, screen, status, gui_state):

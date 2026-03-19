@@ -123,8 +123,7 @@ class GameManager:
         if self.ai_worker.get_move_from_engine_thread():
             self.last_ai_time_ms = self.ai_worker.result_time_ms
 
-            if (not self.ai_worker.result_error
-                and self.ai_worker.result_fen == self.board.fen()
+            if (self.ai_worker.result_fen == self.board.fen()
                 and self.is_ai_turn()):
 
                 move = self.ai_worker.result_move
@@ -167,8 +166,7 @@ class GameManager:
         return (AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE).upper()
 
     def _save_pgn(self):
-        if not (self.board.is_game_over() and self.mode == AI_VS_AI
-                    and AI_SAVE_PGN and not self.pgn_saved):
+        if not (self.board.is_game_over() and AI_SAVE_PGN and not self.pgn_saved):
             return
 
         game = chess.pgn.Game()

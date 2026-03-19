@@ -36,7 +36,7 @@ class AIMoveWorker(_SingleFutureWorker):
         self._requested_fen: Optional[str] = None
         self.result_fen: Optional[str] = None
         self.result_move: Optional[chess.Move] = None
-        self.result_error: Optional[str] = None
+        self.error: Optional[str] = None
         self.result_time_ms = 0
 
     def _clear_request(self):
@@ -50,6 +50,7 @@ class AIMoveWorker(_SingleFutureWorker):
         self._started_at = time.perf_counter()
         self._requested_fen = board_copy.fen()
         self._engine = engine
+        self.error = None
         self.submit(self.solve_move, engine, board_copy)
         return True
 
@@ -61,13 +62,7 @@ class AIMoveWorker(_SingleFutureWorker):
         if future is None:
             return False
         self.result_fen = self._requested_fen
-        try:
-            self.result_move, self.result_time_ms, self.result_error = future.result()
-        except Exception as exc:
-            self.result_move = None
-            self.result_time_ms = 0
-            self.result_error = str(exc)
-        self._clear_request()
+        self.result_move, self.result_time_ms, self.error = future.result()
         return True
 
     @staticmethod
@@ -77,7 +72,9 @@ class AIMoveWorker(_SingleFutureWorker):
             move = engine.get_best_move(board)
             return move, int((time.perf_counter() - start) * 1000), None
         except Exception as exc:
-            return None, int((time.perf_counter() - start) * 1000), str(exc)
+            time.sleep(0.1)
+            default_move = next(iter(board.legal_moves), None)
+            return default_move, int((time.perf_counter() - start) * 1000), str(exc)
 
     def clear_result(self):
         self.result_fen = None
