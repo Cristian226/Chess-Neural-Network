@@ -8,12 +8,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from ai.lichess_dataset import LichessCsvDataset
+from ai.preprocessed_dataset import PreprocessedShardDataset
 from ai.fen_dataset import FenDataset
-from ai.model import ChessEvalNet
+from ai.model import ChessEvalNet, CHANNELS, NUM_BLOCKS
 from ai.training_config import *
 
 DEVICE = torch.device("cuda")
-CLIP_CP = 1000.0
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -25,15 +25,15 @@ def build_loader_kwargs():
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS,
         pin_memory=True,
-        persistent_workers=True,
-        prefetch_factor=4,
+        persistent_workers=False,
+        prefetch_factor=2,
     )
 
-def scale_targets(t: torch.Tensor):
-    return torch.clamp(t, -CLIP_CP, CLIP_CP) / CLIP_CP
+def scale_targets(t: torch.Tensor) -> torch.Tensor:
+    return torch.tanh(t / TANH_SCALE)   # cp → (-1, +1)
 
-def unscale(t: torch.Tensor):
-    return t * CLIP_CP
+def unscale(t: torch.Tensor) -> torch.Tensor:
+    return torch.atanh(t.float().clamp(-1 + 1e-4, 1 - 1e-4)) * TANH_SCALE  # (-1, +1) → cp
 
 
 def save_checkpoint(path, model, optimizer, scheduler, epoch, best_loss):
@@ -43,6 +43,7 @@ def save_checkpoint(path, model, optimizer, scheduler, epoch, best_loss):
         "scheduler": scheduler.state_dict(),
         "epoch": epoch,
         "best_loss": best_loss,
+        "tanh_scale": TANH_SCALE,
     }, path)
 
 def load_checkpoint(path, model, optimizer, scheduler):
@@ -103,11 +104,19 @@ if __name__ == "__main__":
     set_seed(SEED)
 
     if DATASET_TYPE == FEN:
-        train_dataset = FenDataset(split="train")
-        val_dataset = FenDataset(split="val")
+        if USE_PREPROCESSED_FEN:
+            train_dataset = PreprocessedShardDataset(split="train", data_dir=FEN_PREPROCESSED_DIR)
+            val_dataset = PreprocessedShardDataset(split="val", data_dir=FEN_PREPROCESSED_DIR)
+        else:
+            train_dataset = FenDataset(split="train")
+            val_dataset = FenDataset(split="val")
     else:
-        train_dataset = LichessCsvDataset(split="train")
-        val_dataset = LichessCsvDataset(split="val")
+        if USE_PREPROCESSED_LICHESS:
+            train_dataset = PreprocessedShardDataset(split="train", data_dir=LICHESS_PREPROCESSED_DIR)
+            val_dataset = PreprocessedShardDataset(split="val", data_dir=LICHESS_PREPROCESSED_DIR)
+        else:
+            train_dataset = LichessCsvDataset(split="train")
+            val_dataset = LichessCsvDataset(split="val")
 
     loader_kwargs = build_loader_kwargs()
     train_loader = DataLoader(train_dataset, **loader_kwargs)
@@ -121,13 +130,14 @@ if __name__ == "__main__":
     start_epoch = 1
 
     os.makedirs("checkpoints", exist_ok=True)
-
     if RESUME_PATH and os.path.exists(RESUME_PATH):
         start_epoch, best_val_loss = load_checkpoint(RESUME_PATH, model, optimizer, scheduler)
     elif RESUME_PATH:
         print("Checkpoint not found:", RESUME_PATH)
 
-    print(f"Starting training on {DATASET_TYPE}")
+    preprocessed_str = "preprocessed " if (USE_PREPROCESSED_LICHESS or USE_PREPROCESSED_FEN) else ""
+    print(f"Starting training on {preprocessed_str}{DATASET_TYPE}")
+    print(f"Channels: {CHANNELS}, Blocks: {NUM_BLOCKS}, Batch: {BATCH_SIZE}, LR: {LR}, LR min: {LR_MIN}, WeightDecay: {WEIGHT_DECAY}, TanhScale: {TANH_SCALE}")
 
     for epoch in range(start_epoch, EPOCHS + 1):
         t0 = time.time()
@@ -137,15 +147,10 @@ if __name__ == "__main__":
 
         scheduler.step()
         current_lr = scheduler.get_last_lr()[0]
+        
+        save_checkpoint(f"checkpoints/{DATASET_TYPE}_epoch{epoch}.pt", model, optimizer, scheduler, epoch, best_val_loss)
 
         print(f"Epoch {epoch}                 lr ={current_lr:.2e}")
         print(f"Train loss={train_loss:.6f}   mae={train_mae:.1f}cp")
         print(f"Val   loss={val_loss:.6f}   mae={val_mae:.1f}cp   ")
-
-        save_checkpoint(f"checkpoints/{DATASET_TYPE}_epoch{epoch}.pt", model, optimizer, scheduler, epoch, best_val_loss)
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            save_checkpoint(SAVE_PATH, model, optimizer, scheduler, epoch, best_val_loss)
-
         print(f"Epoch time: {(time.time() - t0)/60:.2f} min")

@@ -1,6 +1,13 @@
+from __future__ import annotations
 import chess
-import numpy as np
 import torch
+
+_RANK_BITS: list[torch.Tensor] = [
+    torch.tensor([(b >> bit) & 1 for bit in range(8)], dtype=torch.float32)
+    for b in range(256)
+]
+
+_BUF = torch.zeros(20, 8, 8, dtype=torch.float32)
 
 PIECE_SCORES = {
     chess.PAWN: 1,
@@ -9,7 +16,6 @@ PIECE_SCORES = {
     chess.ROOK: 5,
     chess.QUEEN: 9,
 }
-
 MAX_MATERIAL = 39.0
 
 PIECE_TYPES = (
@@ -22,21 +28,22 @@ PIECE_TYPES = (
 )
 
 
-def bb_to_plane(bb: int) -> torch.Tensor:
-    raw  = np.frombuffer(bb.to_bytes(8, "little"), dtype=np.uint8)
-    bits = np.unpackbits(raw, bitorder="little").astype(np.float32)
-    return torch.from_numpy(bits.copy()).view(8, 8).flip(0)
+def _write_bb(bb: int, plane: torch.Tensor) -> None:
+    raw = bb.to_bytes(8, "little")
+    for rank in range(8):
+        plane[7 - rank] = _RANK_BITS[raw[rank]]
 
 def simple_score(board: chess.Board) -> float:
     score = 0
-    for piece_type, weight in PIECE_SCORES.items():
-        score += weight * (
-            len(board.pieces(piece_type, chess.WHITE)) -
-            len(board.pieces(piece_type, chess.BLACK))
+    for pt, w in PIECE_SCORES.items():
+        score += w * (
+            chess.popcount(board.pieces_mask(pt, chess.WHITE)) -
+            chess.popcount(board.pieces_mask(pt, chess.BLACK))
         )
     return score / MAX_MATERIAL
 
-def encode_board(board: chess.Board) -> torch.Tensor:
+
+def encode_board(board: chess.Board, clone: bool = True) -> torch.Tensor:
     """
     0–5     White pieces
     6–11    Black pieces
@@ -49,39 +56,37 @@ def encode_board(board: chess.Board) -> torch.Tensor:
     18      En-passant target square
     19      Simple score [-1, 1]
     """
-    board = board.copy()
     if board.turn == chess.BLACK:
         board = board.mirror()
 
-    planes = torch.zeros((20, 8, 8), dtype=torch.float32)
+    _BUF.zero_()
 
     for color, offset in ((chess.WHITE, 0), (chess.BLACK, 6)):
         for i, pt in enumerate(PIECE_TYPES):
             bb = int(board.pieces_mask(pt, color))
             if bb:
-                planes[offset + i] = bb_to_plane(bb)
+                _write_bb(bb, _BUF[offset + i])
 
-    white_att = black_att = 0
-    for sq in chess.SquareSet(board.occupied):
-        bb = int(board.attacks_mask(sq))
-        if board.color_at(sq) == chess.WHITE:
-            white_att |= bb
-        else:
-            black_att |= bb
-
+    white_att = 0
+    for sq in chess.SquareSet(board.occupied_co[chess.WHITE]):
+        white_att |= int(board.attacks_mask(sq))
     if white_att:
-        planes[12] = bb_to_plane(white_att)
-    if black_att:
-        planes[13] = bb_to_plane(black_att)
+        _write_bb(white_att, _BUF[12])
 
-    planes[14].fill_(1.0 if board.has_kingside_castling_rights(chess.WHITE)  else 0.0)
-    planes[15].fill_(1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0)
-    planes[16].fill_(1.0 if board.has_kingside_castling_rights(chess.BLACK)  else 0.0)
-    planes[17].fill_(1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0)
+    black_att = 0
+    for sq in chess.SquareSet(board.occupied_co[chess.BLACK]):
+        black_att |= int(board.attacks_mask(sq))
+    if black_att:
+        _write_bb(black_att, _BUF[13])
+
+    _BUF[14].fill_(1.0 if board.has_kingside_castling_rights(chess.WHITE)  else 0.0)
+    _BUF[15].fill_(1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0)
+    _BUF[16].fill_(1.0 if board.has_kingside_castling_rights(chess.BLACK)  else 0.0)
+    _BUF[17].fill_(1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0)
 
     if board.ep_square is not None:
-        planes[18] = bb_to_plane(chess.BB_SQUARES[board.ep_square])
+        _write_bb(int(chess.BB_SQUARES[board.ep_square]), _BUF[18])
 
-    planes[19].fill_(simple_score(board))
+    _BUF[19].fill_(simple_score(board))
 
-    return planes
+    return _BUF.clone() if clone else _BUF
