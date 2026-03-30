@@ -1,7 +1,7 @@
 # Dataset
 FEN = "fen"
 LICHESS = "lichess"
-DATASET_TYPE = FEN
+DATASET_TYPE = LICHESS
 
 FEN_PATH = "training_data/fenDataset.csv"
 LICHESS_PATH = "training_data/lichessDataset.csv"
@@ -27,9 +27,9 @@ FEN_MAX_VALUE_EVAL = None
 
 # Training
 BATCH_SIZE = 512
-EPOCHS = 20
+EPOCHS = 35
 LR = 5e-4
-LR_MIN = 3e-5
+LR_MIN = 1e-4
 WEIGHT_DECAY = 8e-4
 NUM_WORKERS = 12
 SEED = 226

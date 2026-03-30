@@ -1,0 +1,190 @@
+import csv
+import os
+import time
+import chess
+import chess.pgn
+
+import engine.nn_engine as nn_engine_module
+from engine.nn_engine import NeuralNetEngine
+from engine.stockfish_engine import StockfishEngine
+
+
+AI_CONFIGS = [
+    {"name": "fenAi_fen48c8b", "model_path": "ai\\fenAi5.pt", "depth": 7},
+    {"name": "lichessAi_lichess48c8b", "model_path": "ai\\lichessAi5.pt", "depth": 7},
+]
+STOCKFISH_SETTINGS = {"elo": 2000, "time_limit": 1.0}
+TOTAL_GAMES = 100
+OUTPUT_DIR = "logs/ai_benchmark"
+
+SUMMARY_TXT = "match_summaries.txt"
+MAX_PLIES = 300
+RESULT_DRAW = "1/2-1/2"
+CSV_HEADERS = ["game", "ai_color", "result", "ai_score", "plies", "duration_sec", "avg_ai_move_time", "termination", "moves_pgn"]
+
+
+def get_ai_score(result: str, is_white: bool) -> float:
+    if result == "1-0":
+        return 1.0 if is_white else 0.0
+    if result == "0-1":
+        return 0.0 if is_white else 1.0
+    return 0.5
+
+def get_csv_path(ai_name: str) -> str:
+    return os.path.join(OUTPUT_DIR, f"{ai_name}.csv")
+
+def get_summary_path() -> str:
+    return os.path.join(OUTPUT_DIR, SUMMARY_TXT)
+
+def init_output_files():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    for cfg in AI_CONFIGS:
+        with open(get_csv_path(cfg["name"]), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(CSV_HEADERS)
+
+    with open(get_summary_path(), "w") as f:
+        f.write("AI vs Stockfish match summaries\n")
+        f.write(f"Total games per AI: {TOTAL_GAMES}\n")
+        f.write(f"Stockfish settings: {STOCKFISH_SETTINGS}\n")
+        f.write("-" * 60 + "\n")
+
+
+def append_game_result(ai_name: str, data: dict):
+    with open(get_csv_path(ai_name), "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            data["game"],
+            data["ai_color"],
+            data["result"],
+            f"{data['ai_score']:.1f}",
+            data["plies"],
+            f"{data['duration']:.3f}",
+            f"{data['avg_ai_move_time']:.4f}",
+            data["termination"],
+            data["moves"]
+        ])
+    print(
+        f"[{ai_name}] {data['game']}/{TOTAL_GAMES} | {data['ai_color']:<5} | {data['result']} "
+        f"| {data['plies']} plies | {data['duration']:.2f}s | avg ai move {data['avg_ai_move_time']:.3f}s"
+    )
+
+def moves_to_pgn_text(board: chess.Board, result: str) -> str:
+    game = chess.pgn.Game()
+    game.add_line(board.move_stack)
+    exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
+    return game.accept(exporter).strip()
+
+def build_match_summary_lines(ai_name: str, ai_depth: int, games: list[dict]) -> list[str]:
+    total_score = sum(game["ai_score"] for game in games)
+    wins = sum(1 for game in games if game["ai_score"] == 1.0)
+    draws = sum(1 for game in games if game["ai_score"] == 0.5)
+    losses = sum(1 for game in games if game["ai_score"] == 0.0)
+
+    avg_plies = sum(game["plies"] for game in games) / TOTAL_GAMES
+    avg_duration = sum(game["duration"] for game in games) / TOTAL_GAMES
+    avg_ai_move_time = (sum(game["avg_ai_move_time"] for game in games) / TOTAL_GAMES)
+
+    white_games = [game for game in games if game["ai_color"] == "white"]
+    black_games = [game for game in games if game["ai_color"] == "black"]
+    white_score = sum(game["ai_score"] for game in white_games)
+    black_score = sum(game["ai_score"] for game in black_games)
+
+    return [
+        f"[{ai_name}] Match summary",
+        f"Depth: {ai_depth}",
+        f"Games: {TOTAL_GAMES}",
+        f"Score: {total_score:.1f}/{TOTAL_GAMES} ({(100.0 * total_score / TOTAL_GAMES):.1f}%)",
+        f"W-D-L: {wins}-{draws}-{losses}",
+        f"Score as White: {white_score:.1f}/{len(white_games)}",
+        f"Score as Black: {black_score:.1f}/{len(black_games)}",
+        f"Avg plies: {avg_plies:.1f}",
+        f"Avg game duration: {avg_duration:.2f}s",
+        f"Avg model move time: {avg_ai_move_time:.3f}s",
+    ]
+
+def print_match_summary(ai_name: str, ai_depth: int, games: list[dict]):
+    lines = build_match_summary_lines(ai_name, ai_depth, games)
+    print()
+    for line in lines:
+        print(line)
+
+def append_match_summary_to_file(ai_name: str, ai_depth: int, games: list[dict]):
+    lines = build_match_summary_lines(ai_name, ai_depth, games)
+    with open(get_summary_path(), "a") as f:
+        f.write("\n")
+        f.write("\n".join(lines))
+        f.write("\n")
+        f.write("-" * 60 + "\n")
+
+
+def play_single_game(game_idx: int, ai_engine, stockfish_engine : StockfishEngine, ai_is_white: bool):
+    board = chess.Board()
+    start_time = time.perf_counter()
+
+    while not board.is_game_over(claim_draw=True) and len(board.move_stack) < MAX_PLIES:
+        is_ai_turn = (board.turn == chess.WHITE) == ai_is_white
+        if is_ai_turn:
+            move = ai_engine.get_best_move(board)
+        else:
+            move = stockfish_engine.get_best_move(board)
+        if move is None:
+            break
+        board.push(move)
+
+    if board.is_game_over(claim_draw=True):
+        outcome = board.outcome(claim_draw=True)
+        result = board.result(claim_draw=True)
+        termination = outcome.termination.name
+    else:
+        result = RESULT_DRAW
+        termination = "MAX_PLIES"
+
+    plies = len(board.move_stack)
+    duration = time.perf_counter() - start_time
+    ai_move_count = (plies + int(ai_is_white)) // 2
+    avg_ai_move_time = (duration - ((plies - ai_move_count) * stockfish_engine.time_limit)) / ai_move_count
+
+    return {
+        "game": game_idx,
+        "ai_color": "white" if ai_is_white else "black",
+        "result": result,
+        "ai_score": get_ai_score(result, ai_is_white),
+        "plies": plies,
+        "duration": duration,
+        "avg_ai_move_time": avg_ai_move_time,
+        "termination": termination,
+        "moves": moves_to_pgn_text(board, result),
+    }
+
+def run_match(ai_config: dict, stockfish_engine: StockfishEngine):
+    ai_name = ai_config["name"]
+    print(f"{ai_name} started")
+
+    nn_engine_module.AI_MODEL_PATH = ai_config["model_path"]
+    ai_engine = NeuralNetEngine(ai_config["depth"])
+    match_results = []
+
+    for game_idx in range(1, TOTAL_GAMES + 1):
+        ai_is_white = game_idx <= TOTAL_GAMES // 2
+        result = play_single_game(game_idx, ai_engine, stockfish_engine, ai_is_white)
+        match_results.append(result)
+        append_game_result(ai_name, result)
+
+    print_match_summary(ai_name, ai_config["depth"], match_results)
+    append_match_summary_to_file(ai_name, ai_config["depth"], match_results)
+
+
+if __name__ == "__main__":
+    stockfish_engine = StockfishEngine(**STOCKFISH_SETTINGS)
+    if not stockfish_engine.available:
+        raise RuntimeError(stockfish_engine.unavailable_reason)
+
+    init_output_files()
+
+    try:
+        for config in AI_CONFIGS:
+            run_match(config, stockfish_engine)
+    finally:
+        stockfish_engine.close()

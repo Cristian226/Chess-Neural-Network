@@ -170,12 +170,9 @@ class GameManager:
             return
 
         game = chess.pgn.Game()
-        node = game
-        for move in self.board.move_stack:
-            node = node.add_variation(move)
-
+        game.add_line(self.board.move_stack)
+        game.headers.clear()
         game.headers["Event"] = self.mode.upper()
-        game.headers["Date"] = datetime.date.today().isoformat()
         game.headers["White"] = self._pgn_player(chess.WHITE)
         game.headers["Black"] = self._pgn_player(chess.BLACK)
         game.headers["Result"] = self.board.result()

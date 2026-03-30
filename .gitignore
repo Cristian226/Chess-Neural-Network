@@ -5,6 +5,7 @@ Logs/
 checkpoints/
 saved_ai/
 training_data/
+thesis/
 
 .venv/
 venv/

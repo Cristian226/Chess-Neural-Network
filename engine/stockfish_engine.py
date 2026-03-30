@@ -4,7 +4,7 @@ from typing import Optional
 from config import *
 
 class StockfishEngine:
-    def __init__(self, elo=STOCKFISH_ELO, time_limit=STOCKFISH_TIME_LIMIT):
+    def __init__(self, elo=STOCKFISH_ELO, time_limit=STOCKFISH_MOVE_TIME_LIMIT):
         self.engine = None
         self._closed = False
         self.elo = elo
