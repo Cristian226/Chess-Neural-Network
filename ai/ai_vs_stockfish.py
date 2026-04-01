@@ -10,12 +10,12 @@ from engine.stockfish_engine import StockfishEngine
 
 
 AI_CONFIGS = [
-    {"name": "fenAi_fen48c8b", "model_path": "ai\\fenAi5.pt", "depth": 7},
-    {"name": "lichessAi_lichess48c8b", "model_path": "ai\\lichessAi5.pt", "depth": 7},
+    {"name": "fenAi5_64c10b", "model_path": "saved_ai\\ai5\\ai5fen.pt", "depth": 7},
+    {"name": "lichessAi5_64c10b", "model_path": "saved_ai\\ai5\\ai5lichess.pt", "depth": 7},
 ]
 STOCKFISH_SETTINGS = {"elo": 2000, "time_limit": 1.0}
 TOTAL_GAMES = 100
-OUTPUT_DIR = "logs/ai_benchmark"
+OUTPUT_DIR = "logs/ai5_depth7_2000elo"
 
 SUMMARY_TXT = "match_summaries.txt"
 MAX_PLIES = 300
@@ -40,15 +40,46 @@ def init_output_files():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     for cfg in AI_CONFIGS:
-        with open(get_csv_path(cfg["name"]), "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(CSV_HEADERS)
+        csv_path = get_csv_path(cfg["name"])
+        if not os.path.exists(csv_path):
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(CSV_HEADERS)
 
-    with open(get_summary_path(), "w") as f:
-        f.write("AI vs Stockfish match summaries\n")
-        f.write(f"Total games per AI: {TOTAL_GAMES}\n")
-        f.write(f"Stockfish settings: {STOCKFISH_SETTINGS}\n")
-        f.write("-" * 60 + "\n")
+    summary_path = get_summary_path()
+    if not os.path.exists(summary_path):
+        with open(summary_path, "w") as f:
+            f.write("AI vs Stockfish match summaries\n")
+            f.write(f"Total games per AI: {TOTAL_GAMES}\n")
+            f.write(f"Stockfish settings: {STOCKFISH_SETTINGS}\n")
+            f.write("-" * 60 + "\n")
+
+
+def load_existing_match_results(ai_name: str) -> list[dict]:
+    csv_path = get_csv_path(ai_name)
+    if not os.path.exists(csv_path):
+        return []
+
+    loaded_results = []
+    with open(csv_path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            game_idx = int(row["game"])
+            if game_idx < 1 or game_idx > TOTAL_GAMES:
+                continue
+            loaded_results.append({
+                "game": game_idx,
+                "ai_color": row["ai_color"],
+                "result": row["result"],
+                "ai_score": float(row["ai_score"]),
+                "plies": int(row["plies"]),
+                "duration": float(row["duration_sec"]),
+                "avg_ai_move_time": float(row["avg_ai_move_time"]),
+                "termination": row["termination"],
+                "moves": row["moves_pgn"],
+            })
+
+    return loaded_results
 
 
 def append_game_result(ai_name: str, data: dict):
@@ -162,11 +193,17 @@ def run_match(ai_config: dict, stockfish_engine: StockfishEngine):
     ai_name = ai_config["name"]
     print(f"{ai_name} started")
 
+    match_results = load_existing_match_results(ai_name)
+    if match_results:
+        print(f"[{ai_name}] Resuming from game {len(match_results) + 1}/{TOTAL_GAMES}.")
+    if len(match_results) >= TOTAL_GAMES:
+        print(f"[{ai_name}] Already complete. Skipping.")
+        return
+
     nn_engine_module.AI_MODEL_PATH = ai_config["model_path"]
     ai_engine = NeuralNetEngine(ai_config["depth"])
-    match_results = []
 
-    for game_idx in range(1, TOTAL_GAMES + 1):
+    for game_idx in range(len(match_results) + 1, TOTAL_GAMES + 1):
         ai_is_white = game_idx <= TOTAL_GAMES // 2
         result = play_single_game(game_idx, ai_engine, stockfish_engine, ai_is_white)
         match_results.append(result)

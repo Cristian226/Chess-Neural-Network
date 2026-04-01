@@ -18,6 +18,8 @@ def main() -> None:
     train_cutoff = int(MAX_ROWS_LICHESS * (1.0 - VAL_SPLIT / 100.0))
     shard_count = dict.fromkeys(SPLITS, 0)
     buffers = {s: {"features": [], "targets": []} for s in SPLITS}
+    positions_total = 0
+    positions_by_split = dict.fromkeys(SPLITS, 0)
 
     with open(LICHESS_PATH, encoding="utf-8", errors="replace") as f:
         reader = csv.DictReader(f)
@@ -36,17 +38,22 @@ def main() -> None:
             for features, eval_cp in samples:
                 buf["features"].append(features)
                 buf["targets"].append(float(eval_cp))
+                positions_total += 1
+                positions_by_split[split] += 1
 
                 if len(buf["features"]) >= LICHESS_SHARD_SIZE:
                     flush_split_buffer(buffers, split, LICHESS_PREPROCESSED_DIR, shard_count)
 
             if (global_seen + 1) % PROGRESS_EVERY == 0:
-                print(f"Processed {global_seen + 1:,} games")
+                print(f"Processed {global_seen + 1:,} games | positions: {positions_total:,}")
 
     for split in SPLITS:
         flush_split_buffer(buffers, split, LICHESS_PREPROCESSED_DIR, shard_count)
 
     print("Preprocessing complete.")
+    print(f"Total positions: {positions_total:,}")
+    print(f"Train positions: {positions_by_split['train']:,}")
+    print(f"Val positions: {positions_by_split['val']:,}")
 
 
 if __name__ == "__main__":
