@@ -1,7 +1,8 @@
 # Dataset
 FEN = "fen"
 LICHESS = "lichess"
-DATASET_TYPE = LICHESS
+COMBINED = "combined"
+DATASET_TYPE = COMBINED
 
 FEN_PATH = "training_data/fenDataset.csv"
 LICHESS_PATH = "training_data/lichessDataset.csv"

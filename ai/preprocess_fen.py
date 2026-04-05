@@ -1,6 +1,5 @@
 import csv
 import os
-import random
 import chess
 
 from ai.encoding import encode_board
@@ -13,7 +12,6 @@ PROGRESS_EVERY = 100_000
 
 
 def main() -> None:
-    random.seed(SEED)
     os.makedirs(FEN_PREPROCESSED_DIR, exist_ok=True)
     clear_old_shards(FEN_PREPROCESSED_DIR)
 

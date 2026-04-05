@@ -1,6 +1,5 @@
 import csv
 import os
-import random
 
 from ai.lichess_dataset import parse_movetext
 from ai.preprocess_utils import clear_old_shards, flush_split_buffer
@@ -11,7 +10,6 @@ SPLITS = ("train", "val")
 
 
 def main() -> None:
-    random.seed(SEED)
     os.makedirs(LICHESS_PREPROCESSED_DIR, exist_ok=True)
     clear_old_shards(LICHESS_PREPROCESSED_DIR)
 

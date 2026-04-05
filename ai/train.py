@@ -100,24 +100,31 @@ def run_epoch(model, loader, optimizer=None, scaler=None) -> Tuple[float, float]
     return total_loss / total_count, total_abs / total_count
 
 
-if __name__ == "__main__":
-    set_seed(SEED)
-
-    if DATASET_TYPE == FEN:
+def build_datasets():
+    if DATASET_TYPE == COMBINED:
+        train_dataset = PreprocessedShardDataset(split="train", data_dirs=[FEN_PREPROCESSED_DIR, LICHESS_PREPROCESSED_DIR])
+        val_dataset = PreprocessedShardDataset(split="val", data_dirs=[FEN_PREPROCESSED_DIR, LICHESS_PREPROCESSED_DIR])
+    elif DATASET_TYPE == FEN:
         if USE_PREPROCESSED_FEN:
-            train_dataset = PreprocessedShardDataset(split="train", data_dir=FEN_PREPROCESSED_DIR)
-            val_dataset = PreprocessedShardDataset(split="val", data_dir=FEN_PREPROCESSED_DIR)
+            train_dataset = PreprocessedShardDataset(split="train", data_dirs=[FEN_PREPROCESSED_DIR])
+            val_dataset = PreprocessedShardDataset(split="val", data_dirs=[FEN_PREPROCESSED_DIR])
         else:
             train_dataset = FenDataset(split="train")
             val_dataset = FenDataset(split="val")
     else:
         if USE_PREPROCESSED_LICHESS:
-            train_dataset = PreprocessedShardDataset(split="train", data_dir=LICHESS_PREPROCESSED_DIR)
-            val_dataset = PreprocessedShardDataset(split="val", data_dir=LICHESS_PREPROCESSED_DIR)
+            train_dataset = PreprocessedShardDataset(split="train", data_dirs=[LICHESS_PREPROCESSED_DIR])
+            val_dataset = PreprocessedShardDataset(split="val", data_dirs=[LICHESS_PREPROCESSED_DIR])
         else:
             train_dataset = LichessCsvDataset(split="train")
             val_dataset = LichessCsvDataset(split="val")
 
+    return train_dataset, val_dataset
+
+
+if __name__ == "__main__":
+    set_seed(SEED)
+    train_dataset, val_dataset = build_datasets()
     loader_kwargs = build_loader_kwargs()
     train_loader = DataLoader(train_dataset, **loader_kwargs)
     val_loader = DataLoader(val_dataset, **loader_kwargs)

@@ -7,15 +7,18 @@ from torch.utils.data import IterableDataset, get_worker_info
 
 
 class PreprocessedShardDataset(IterableDataset):
-    def __init__(self, split: str, data_dir: str) -> None:
+    def __init__(self, split: str, data_dirs: list[str]):
         super().__init__()
         self.split = split
-        self.data_dir = data_dir
+        self.data_dirs = data_dirs
+        self.shards = []
 
-        pattern = os.path.join(data_dir, f"{split}_*.pt")
-        self.shards = sorted(glob(pattern))
+        for directory in self.data_dirs:
+            pattern = os.path.join(directory, f"{split}_*.pt")
+            self.shards.extend(glob(pattern))
+
         if not self.shards:
-            raise FileNotFoundError(f"No shards found for split '{split}' in '{data_dir}'.")
+            raise FileNotFoundError(f"No shards found for split '{split}'")
 
     def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
         wi = get_worker_info()
