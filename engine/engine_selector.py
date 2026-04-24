@@ -10,7 +10,7 @@ def get_engine(engine_name: str, minMaxDepth=AI_MINMAX_DEPTH, stockFishElo=STOCK
         return DefaultMinMaxEngine(minMaxDepth)
     
     elif engine_name == 'neural' or engine_name == 'nn':
-        return NeuralNetEngine(minMaxDepth)
+        return NeuralNetEngine(minMaxDepth, time_limit_ms=AI_SEARCH_TIME_LIMIT_MS)
     
     elif engine_name == 'stockfish':
         return StockfishEngine(stockFishElo, stockfishTimeLimit)

@@ -9,6 +9,7 @@ LICHESS_PATH = "training_data/lichessDataset.csv"
 
 MAX_ROWS_LICHESS = 800_000
 MAX_ROWS_FEN = 13_000_000
+MAX_PREPROCESS_POSITIONS = None
 
 # Preprocessed Lichess options
 USE_PREPROCESSED_LICHESS = True

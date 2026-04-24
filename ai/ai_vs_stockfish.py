@@ -10,17 +10,26 @@ from engine.stockfish_engine import StockfishEngine
 
 
 AI_CONFIGS = [
-    {"name": "fenAi5_64c10b", "model_path": "saved_ai\\ai5\\ai5fen.pt", "depth": 7},
-    {"name": "lichessAi5_64c10b", "model_path": "saved_ai\\ai5\\ai5lichess.pt", "depth": 7},
+    {"name": "ai5fen_48c8b", "model_path": "saved_ai\\ai5\\ai5fen48c8b.pt", "depth": None},
+    {"name": "ai5lichess_48c8bAllGames", "model_path": "saved_ai\\ai5\\ai5lichess48c8bAllGames.pt", "depth": None},
+    {"name": "ai5lichess48c8b13milPositions", "model_path": "saved_ai\\ai5\\ai5lichess48c8b13milPositions.pt", "depth": None},
+    {"name": "ai5combined_48c8b", "model_path": "saved_ai\\ai5\\ai5combined48c8b.pt", "depth": None},
 ]
-STOCKFISH_SETTINGS = {"elo": 2000, "time_limit": 1.0}
+STOCKFISH_SETTINGS = [
+    # {"elo": 2600, "time_limit": 1},
+    {"elo": 2500, "time_limit": 1},
+    # {"elo": 2400, "time_limit": 1},
+    # {"elo": 2300, "time_limit": 1},
+]
+NEURAL_NET_TIME_LIMIT = 2.5
 TOTAL_GAMES = 100
-OUTPUT_DIR = "logs/ai5_depth7_2000elo"
+OUTPUT_DIR_PREFIX = "logs/ai5_2_5sTime_48c8b/"
 
 SUMMARY_TXT = "match_summaries.txt"
-MAX_PLIES = 300
+MAX_PLIES = 250
 RESULT_DRAW = "1/2-1/2"
 CSV_HEADERS = ["game", "ai_color", "result", "ai_score", "plies", "duration_sec", "avg_ai_move_time", "termination", "moves_pgn"]
+OUTPUT_DIR = None
 
 
 def get_ai_score(result: str, is_white: bool) -> float:
@@ -37,6 +46,9 @@ def get_summary_path() -> str:
     return os.path.join(OUTPUT_DIR, SUMMARY_TXT)
 
 def init_output_files():
+    global OUTPUT_DIR
+    OUTPUT_DIR = f"{OUTPUT_DIR_PREFIX}_{stockfish_cfg['elo']}elo_{stockfish_cfg['time_limit']}s"
+    print(f"Output directory: {OUTPUT_DIR}")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     for cfg in AI_CONFIGS:
@@ -125,6 +137,7 @@ def build_match_summary_lines(ai_name: str, ai_depth: int, games: list[dict]) ->
     return [
         f"[{ai_name}] Match summary",
         f"Depth: {ai_depth}",
+        f"AI time limit: {NEURAL_NET_TIME_LIMIT:.2f}s/move",
         f"Games: {TOTAL_GAMES}",
         f"Score: {total_score:.1f}/{TOTAL_GAMES} ({(100.0 * total_score / TOTAL_GAMES):.1f}%)",
         f"W-D-L: {wins}-{draws}-{losses}",
@@ -153,11 +166,16 @@ def append_match_summary_to_file(ai_name: str, ai_depth: int, games: list[dict])
 def play_single_game(game_idx: int, ai_engine, stockfish_engine : StockfishEngine, ai_is_white: bool):
     board = chess.Board()
     start_time = time.perf_counter()
+    ai_think_total = 0.0
+    ai_move_count = 0
 
     while not board.is_game_over(claim_draw=True) and len(board.move_stack) < MAX_PLIES:
         is_ai_turn = (board.turn == chess.WHITE) == ai_is_white
         if is_ai_turn:
+            t0 = time.perf_counter()
             move = ai_engine.get_best_move(board)
+            ai_think_total += time.perf_counter() - t0
+            ai_move_count += 1
         else:
             move = stockfish_engine.get_best_move(board)
         if move is None:
@@ -174,8 +192,7 @@ def play_single_game(game_idx: int, ai_engine, stockfish_engine : StockfishEngin
 
     plies = len(board.move_stack)
     duration = time.perf_counter() - start_time
-    ai_move_count = (plies + int(ai_is_white)) // 2
-    avg_ai_move_time = (duration - ((plies - ai_move_count) * stockfish_engine.time_limit)) / ai_move_count
+    avg_ai_move_time = (ai_think_total / ai_move_count) if ai_move_count > 0 else 0.0
 
     return {
         "game": game_idx,
@@ -201,7 +218,7 @@ def run_match(ai_config: dict, stockfish_engine: StockfishEngine):
         return
 
     nn_engine_module.AI_MODEL_PATH = ai_config["model_path"]
-    ai_engine = NeuralNetEngine(ai_config["depth"])
+    ai_engine = NeuralNetEngine(ai_config["depth"], time_limit_ms= NEURAL_NET_TIME_LIMIT * 1000)
 
     for game_idx in range(len(match_results) + 1, TOTAL_GAMES + 1):
         ai_is_white = game_idx <= TOTAL_GAMES // 2
@@ -214,14 +231,15 @@ def run_match(ai_config: dict, stockfish_engine: StockfishEngine):
 
 
 if __name__ == "__main__":
-    stockfish_engine = StockfishEngine(**STOCKFISH_SETTINGS)
-    if not stockfish_engine.available:
-        raise RuntimeError(stockfish_engine.unavailable_reason)
+    for stockfish_cfg in STOCKFISH_SETTINGS:
+        stockfish_engine = StockfishEngine(**stockfish_cfg)
+        if not stockfish_engine.available:
+            raise RuntimeError(stockfish_engine.unavailable_reason)
 
-    init_output_files()
+        init_output_files()
 
-    try:
-        for config in AI_CONFIGS:
-            run_match(config, stockfish_engine)
-    finally:
-        stockfish_engine.close()
+        try:
+            for config in AI_CONFIGS:
+                run_match(config, stockfish_engine)
+        finally:
+            stockfish_engine.close()

@@ -1,4 +1,5 @@
 import math
+import time
 from array import array
 from threading import Event
 import chess
@@ -100,12 +101,16 @@ class NeuralNetEngine:
         self.countermoves: list[list[list[chess.Move | None]]] = [[[None] * 64 for _ in range(64)] for _ in range(2)]
         self._eval_stack: list[float] = [0.0] * MAX_PLY
         self._eval_valid: list[bool] = [False] * MAX_PLY
+        self._deadline_ns: int | None = None
         self.nodes = 0
 
 
     def cancel_search(self) -> None:
         self._cancel_event.set()
         self._stop_search = True
+
+    def _time_is_up(self) -> bool:
+        return self._deadline_ns is not None and time.perf_counter_ns() >= self._deadline_ns
 
 
     def evaluate(self, board: chess.Board, key: int | None = None) -> float:
@@ -277,9 +282,14 @@ class NeuralNetEngine:
     def _qsearch(self, board: chess.Board, alpha: int, beta: int, ply: int, qs_depth: int = 0) -> int:
         self.nodes += 1
         if self._stop_search or (
-            not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and self._cancel_event.is_set()
+            not (self.nodes & (STOP_CHECK_INTERVAL - 1))
+            and (self._cancel_event.is_set() or self._time_is_up())
         ):
             self._stop_search = True; return alpha
+
+        if self._time_is_up():
+            self._stop_search = True
+            return alpha
 
         in_check = board.is_check()
         if not in_check:
@@ -315,7 +325,10 @@ class NeuralNetEngine:
     def _search(self, board: chess.Board, depth, alpha, beta, ply, prev_move: chess.Move | None = None, cut_node = False, excluded_move: chess.Move | None = None,) -> tuple[int, chess.Move | None]:
         self.nodes += 1
         if self._stop_search: return alpha, None
-        if not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and self._cancel_event.is_set():
+        if self._time_is_up():
+            self._stop_search = True
+            return alpha, None
+        if not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and (self._cancel_event.is_set() or self._time_is_up()):
             self._stop_search = True; return alpha, None
 
         # Draw detection
@@ -501,11 +514,21 @@ class NeuralNetEngine:
         self.nodes = 0
         self._age_history()
 
+        if self.time_limit_ms is not None:
+            self._deadline_ns = time.perf_counter_ns() + int(self.time_limit_ms * 1_000_000)
+            max_depth = MAX_PLY - 1
+        else:
+            self._deadline_ns = None
+            max_depth = self.depth
+
         best_move = None
         best_score = 0
 
-        for d in range(1, self.depth + 1):
+        for d in range(1, max_depth + 1):
             if self._stop_search: break
+            if self._time_is_up():
+                self._stop_search = True
+                break
 
             if d <= 5 or best_move is None:
                 score, move = self._search(board, d, -MATE_SCORE, MATE_SCORE, 0)
@@ -537,5 +560,6 @@ class NeuralNetEngine:
                         best_move = fail_high_move; best_score = fail_high_score
                     break
 
+        self._deadline_ns = None
         return best_move or legal[0]
     
