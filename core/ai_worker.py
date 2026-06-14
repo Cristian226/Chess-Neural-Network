@@ -79,7 +79,7 @@ class AIMoveWorker(_SingleFutureWorker):
     def clear_result(self):
         self.result_fen = None
         self.result_move = None
-        self.result_error = None
+        self.error = None
         self.result_time_ms = 0
 
     def cancel(self):

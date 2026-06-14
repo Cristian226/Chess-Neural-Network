@@ -1,4 +1,5 @@
 from __future__ import annotations
+import threading
 import chess
 import torch
 
@@ -7,7 +8,15 @@ _RANK_BITS: list[torch.Tensor] = [
     for b in range(256)
 ]
 
-_BUF = torch.zeros(20, 8, 8, dtype=torch.float32)
+# Per thread scratch buffer: encode_board is called concurrently from the AI search thread and the eval thread
+_local = threading.local()
+
+def _get_buf() -> torch.Tensor:
+    buf = getattr(_local, "buf", None)
+    if buf is None:
+        buf = torch.zeros(20, 8, 8, dtype=torch.float32)
+        _local.buf = buf
+    return buf
 
 PIECE_SCORES = {
     chess.PAWN: 1,
@@ -59,34 +68,35 @@ def encode_board(board: chess.Board, clone: bool = True) -> torch.Tensor:
     if board.turn == chess.BLACK:
         board = board.mirror()
 
-    _BUF.zero_()
+    buf = _get_buf()
+    buf.zero_()
 
     for color, offset in ((chess.WHITE, 0), (chess.BLACK, 6)):
         for i, pt in enumerate(PIECE_TYPES):
             bb = int(board.pieces_mask(pt, color))
             if bb:
-                _write_bb(bb, _BUF[offset + i])
+                _write_bb(bb, buf[offset + i])
 
     white_att = 0
     for sq in chess.SquareSet(board.occupied_co[chess.WHITE]):
         white_att |= int(board.attacks_mask(sq))
     if white_att:
-        _write_bb(white_att, _BUF[12])
+        _write_bb(white_att, buf[12])
 
     black_att = 0
     for sq in chess.SquareSet(board.occupied_co[chess.BLACK]):
         black_att |= int(board.attacks_mask(sq))
     if black_att:
-        _write_bb(black_att, _BUF[13])
+        _write_bb(black_att, buf[13])
 
-    _BUF[14].fill_(1.0 if board.has_kingside_castling_rights(chess.WHITE)  else 0.0)
-    _BUF[15].fill_(1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0)
-    _BUF[16].fill_(1.0 if board.has_kingside_castling_rights(chess.BLACK)  else 0.0)
-    _BUF[17].fill_(1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0)
+    buf[14].fill_(1.0 if board.has_kingside_castling_rights(chess.WHITE)  else 0.0)
+    buf[15].fill_(1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0)
+    buf[16].fill_(1.0 if board.has_kingside_castling_rights(chess.BLACK)  else 0.0)
+    buf[17].fill_(1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0)
 
     if board.ep_square is not None:
-        _write_bb(int(chess.BB_SQUARES[board.ep_square]), _BUF[18])
+        _write_bb(int(chess.BB_SQUARES[board.ep_square]), buf[18])
 
-    _BUF[19].fill_(simple_score(board))
+    buf[19].fill_(simple_score(board))
 
-    return _BUF.clone() if clone else _BUF
+    return buf.clone() if clone else buf

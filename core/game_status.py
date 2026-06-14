@@ -46,12 +46,19 @@ def _eval_display(tracker) -> EvalDisplay:
 
     return EvalDisplay(label=label, fill=fill, pending=tracker.pending, error=tracker.error)
 
+def player_engine(mode, color, human_color):
+    if mode == PVP or (mode == PVE and color == human_color):
+        return None
+    return AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE
+
 def _player_label(game, color):
-    if game.mode == PVP or (game.mode == PVE and color == game.human_color):
+    engine = player_engine(game.mode, color, game.human_color)
+    if engine is None:
         return "Human"
-    engine = AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE
     if engine == STOCKFISH_AI:
         return f"{engine.upper()} ({STOCKFISH_ELO} Elo)"
+    if AI_SEARCH_TIME_LIMIT_MS is not None:
+        return f"{engine.upper()} (t={AI_SEARCH_TIME_LIMIT_MS/1000:.2f}s)"
     return f"{engine.upper()} (d={AI_MINMAX_DEPTH})"
 
 def _state_label(game):

@@ -5,6 +5,7 @@ import datetime
 from typing import Optional
 
 from core.ai_worker import AIMoveWorker, EvalTracker
+from core.game_status import player_engine
 from engine.engine_selector import get_engine
 from config import *
 
@@ -26,9 +27,6 @@ class GameManager:
         self.pgn_saved = False
         self._schedule_eval()
 
-
-    def copy_board(self):
-        return self.board.copy(stack=True)
 
     @property
     def move_row_count(self) -> int:
@@ -135,18 +133,14 @@ class GameManager:
 
             self.ai_worker.clear_result()
 
-        board_copy = None
         if not self.sf_eval.busy and self.sf_eval.pending:
-            board_copy = board_copy or self.copy_board()
-            self.sf_eval.try_request(board_copy)
+            self.sf_eval.try_request(self.board)
 
         if not self.nn_eval.busy and self.nn_eval.pending:
-            board_copy = board_copy or self.copy_board()
-            self.nn_eval.try_request(board_copy)
+            self.nn_eval.try_request(self.board)
 
         if self.is_ai_turn():
-            board_copy = board_copy or self.copy_board()
-            self.ai_worker.request(self._current_engine(), board_copy)
+            self.ai_worker.request(self._current_engine(), self.board)
 
     def _clear_eval_state(self):
         self.sf_eval.clear()
@@ -160,10 +154,8 @@ class GameManager:
 
 
     def _pgn_player(self, color):
-        if self.mode == PVP or (self.mode == PVE and color == self.human_color):
-            return "Human"
-
-        return (AI_WHITE_ENGINE if color == chess.WHITE else AI_BLACK_ENGINE).upper()
+        engine = player_engine(self.mode, color, self.human_color)
+        return "Human" if engine is None else engine.upper()
 
     def _save_pgn(self):
         if not (self.board.is_game_over() and AI_SAVE_PGN and not self.pgn_saved):

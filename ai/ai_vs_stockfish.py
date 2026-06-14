@@ -10,10 +10,10 @@ from engine.stockfish_engine import StockfishEngine
 
 
 AI_CONFIGS = [
-    {"name": "ai5fen_48c8b", "model_path": "saved_ai\\ai5\\ai5fen48c8b.pt", "depth": None},
-    {"name": "ai5lichess_48c8bAllGames", "model_path": "saved_ai\\ai5\\ai5lichess48c8bAllGames.pt", "depth": None},
-    {"name": "ai5lichess48c8b13milPositions", "model_path": "saved_ai\\ai5\\ai5lichess48c8b13milPositions.pt", "depth": None},
-    {"name": "ai5combined_48c8b", "model_path": "saved_ai\\ai5\\ai5combined48c8b.pt", "depth": None},
+    {"name": "ai5fen96c16b", "model_path": r"saved_ai\ai5\96c16b\ai5fen96c16b.pt", "depth": None},
+    {"name": "ai5lichess96c16bAllGames", "model_path": r"saved_ai\ai5\96c16b\ai5lichess96c16bAllGames.pt", "depth": None},
+    {"name": "ai5lichess96c16b13milPositions", "model_path": r"saved_ai\ai5\96c16b\ai5lichess96c16b13milPositions.pt", "depth": None},
+    {"name": "ai5combined96c16b", "model_path": r"saved_ai\ai5\96c16b\ai5combined96c16b.pt", "depth": None},
 ]
 STOCKFISH_SETTINGS = [
     # {"elo": 2600, "time_limit": 1},
@@ -23,7 +23,7 @@ STOCKFISH_SETTINGS = [
 ]
 NEURAL_NET_TIME_LIMIT = 2.5
 TOTAL_GAMES = 100
-OUTPUT_DIR_PREFIX = "logs/ai5_2_5sTime_48c8b/"
+OUTPUT_DIR_PREFIX = "logs/ai5_2_5sTime_96c16b/"
 
 SUMMARY_TXT = "match_summaries.txt"
 MAX_PLIES = 250
@@ -113,7 +113,7 @@ def append_game_result(ai_name: str, data: dict):
         f"| {data['plies']} plies | {data['duration']:.2f}s | avg ai move {data['avg_ai_move_time']:.3f}s"
     )
 
-def moves_to_pgn_text(board: chess.Board, result: str) -> str:
+def moves_to_pgn_text(board: chess.Board) -> str:
     game = chess.pgn.Game()
     game.add_line(board.move_stack)
     exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
@@ -203,7 +203,7 @@ def play_single_game(game_idx: int, ai_engine, stockfish_engine : StockfishEngin
         "duration": duration,
         "avg_ai_move_time": avg_ai_move_time,
         "termination": termination,
-        "moves": moves_to_pgn_text(board, result),
+        "moves": moves_to_pgn_text(board),
     }
 
 def run_match(ai_config: dict, stockfish_engine: StockfishEngine):

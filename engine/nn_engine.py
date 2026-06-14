@@ -281,13 +281,9 @@ class NeuralNetEngine:
     # Quiescence search
     def _qsearch(self, board: chess.Board, alpha: int, beta: int, ply: int, qs_depth: int = 0) -> int:
         self.nodes += 1
-        if self._stop_search or (
-            not (self.nodes & (STOP_CHECK_INTERVAL - 1))
-            and (self._cancel_event.is_set() or self._time_is_up())
+        if self._stop_search or self._time_is_up() or (
+            not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and self._cancel_event.is_set()
         ):
-            self._stop_search = True; return alpha
-
-        if self._time_is_up():
             self._stop_search = True
             return alpha
 
@@ -324,12 +320,11 @@ class NeuralNetEngine:
     # Main alpha-beta search, all helpers inlined
     def _search(self, board: chess.Board, depth, alpha, beta, ply, prev_move: chess.Move | None = None, cut_node = False, excluded_move: chess.Move | None = None,) -> tuple[int, chess.Move | None]:
         self.nodes += 1
-        if self._stop_search: return alpha, None
-        if self._time_is_up():
+        if self._stop_search or self._time_is_up() or (
+            not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and self._cancel_event.is_set()
+        ):
             self._stop_search = True
             return alpha, None
-        if not (self.nodes & (STOP_CHECK_INTERVAL - 1)) and (self._cancel_event.is_set() or self._time_is_up()):
-            self._stop_search = True; return alpha, None
 
         # Draw detection
         if board.is_insufficient_material(): return 0, None
