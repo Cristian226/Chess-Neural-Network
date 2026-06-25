@@ -6,7 +6,6 @@ from core.game_manager import GameManager
 from gui.renderer import Renderer
 from gui.ui_state import GUIState, PendingPromotion
 from core.game_status import build_game_status
-from gui.board_renderer import PROMOTION_PIECES
 
 
 class GameGUI:
@@ -171,22 +170,8 @@ class GameGUI:
         if not gui_state.pending_promotion:
             return None
 
-        x,y = pos
-        sq = gui_state.pending_promotion.to_square
-
-        file = chess.square_file(sq)
-        rank = chess.square_rank(sq)
-
-        if gui_state.board_flipped:
-            base_x = (7 - file) * SQUARE_SIZE
-            base_y = rank * SQUARE_SIZE
-        else:
-            base_x = file * SQUARE_SIZE
-            base_y = (7 - rank) * SQUARE_SIZE
-
-        if not (base_x <= x < base_x+SQUARE_SIZE and
-                base_y <= y < base_y+SQUARE_SIZE*4):
-            return None
-
-        index = (y-base_y)//SQUARE_SIZE
-        return PROMOTION_PIECES[index]
+        _, cells = self.renderer.board_renderer.promotion_layout(gui_state.pending_promotion.to_square, gui_state.board_flipped)
+        for piece, cell in cells:
+            if cell.collidepoint(pos):
+                return piece
+        return None

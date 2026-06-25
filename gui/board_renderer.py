@@ -94,27 +94,27 @@ class BoardRenderer:
         y = my - gui_state.drag_offset[1]
         screen.blit(self.piece_images[gui_state.drag_piece_symbol], (x,y))
 
+    def promotion_layout(self, to_square, flipped):
+        x, y = self._square_to_screen(to_square, flipped)
+        grow_down = y < BOARD_SIZE // 2
+
+        cells = []
+        for i, piece in enumerate(PROMOTION_PIECES):
+            cell_y = y + i * SQUARE_SIZE if grow_down else y - i * SQUARE_SIZE
+            cells.append((piece, pygame.Rect(x, cell_y, SQUARE_SIZE, SQUARE_SIZE)))
+
+        top_y = y if grow_down else y - 3 * SQUARE_SIZE
+        bg_rect = pygame.Rect(x, top_y, SQUARE_SIZE, SQUARE_SIZE * 4)
+        return bg_rect, cells
+
     def _draw_promotion(self,screen, gui_state, piece_images):
         if not gui_state.pending_promotion:
             return
 
-        sq = gui_state.pending_promotion.to_square
-        file = chess.square_file(sq)
-        rank = chess.square_rank(sq)
+        bg_rect, cells = self.promotion_layout(gui_state.pending_promotion.to_square, gui_state.board_flipped)
+        pygame.draw.rect(screen, PROMOTION_BG, bg_rect)
 
-        if gui_state.board_flipped:
-            x = (7 - file) * SQUARE_SIZE
-            y = rank * SQUARE_SIZE
-        else:
-            x = file * SQUARE_SIZE
-            y = (7 - rank) * SQUARE_SIZE
-
-        rect = pygame.Rect(x, y, SQUARE_SIZE, SQUARE_SIZE*4)
-        pygame.draw.rect(screen,PROMOTION_BG,rect)
-
-        for i, piece in enumerate(PROMOTION_PIECES):
-            cell = pygame.Rect(x, y + i*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
-            pygame.draw.rect(screen,PROMOTION_CELL,cell)
-            symbol = chess.piece_symbol(piece)
-            img = piece_images[symbol]
-            screen.blit(img,cell.topleft)
+        for piece, cell in cells:
+            pygame.draw.rect(screen, PROMOTION_CELL, cell)
+            img = piece_images[chess.piece_symbol(piece)]
+            screen.blit(img, cell.topleft)
